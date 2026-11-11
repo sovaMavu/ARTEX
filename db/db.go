@@ -317,6 +317,9 @@ ON CONFLICT (name) DO NOTHING`,
 	if err := d.seedDefaultInterceptRulesV3(); err != nil {
 		return fmt.Errorf("seed intercept rules v3: %w", err)
 	}
+	if err := d.seedDefaultInterceptRulesV4(); err != nil {
+		return fmt.Errorf("seed intercept rules v4: %w", err)
+	}
 	if err := d.seedDefaultAssetInterceptRules(); err != nil {
 		return fmt.Errorf("seed asset intercept rules: %w", err)
 	}
@@ -360,7 +363,8 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 // declares `mcps: ScopeSentry`, which only takes effect once it's made visible and
 // that MCP is enabled/configured.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon": {"auto", "pentest", "worker"},
+	"api-recon":     {"auto", "pentest", "worker"},
+	"network-recon": {"auto", "pentest", "worker"},
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default
@@ -652,4 +656,102 @@ WHERE NOT EXISTS (SELECT 1 FROM intercept_rules WHERE name = $1)`,
 		return fmt.Errorf("rule %q: %w", name, err)
 	}
 	return d.SetSetting("intercept_default_rules_v3", "done")
+}
+
+// seedDefaultInterceptRulesV4 adds the non-web runner approval gates. The runner
+// itself enforces scope, but these calls are noisy/high-impact or are commonly
+// blocked by engagement rules, so they require an explicit approval. net_snmp is
+// an allow rule: a single-community read-only walk is the least intrusive way to
+// identify a network device and would otherwise fall through to no rule (the
+// default is allow, but recording the decision keeps the intent visible).
+//
+// Own flag so the rules also land on DBs that already ran v1–v3. Uses NOT EXISTS
+// rather than ON CONFLICT because intercept_rules.name has no unique constraint.
+//
+// Phase 2 (not seeded here because the tools do not exist in Phase 1):
+//
+//	mcp__kali_runner__ad_secretsdump → ask   (credential extraction)
+//	mcp__kali_runner__ad_spray       → ask   (account lockout risk)
+//	mcp__kali_runner__ad_relay       → deny  (network poisoning; manual-only)
+//
+// Seed those with the AD pack, not in this Phase 1 migration.
+// Exported as package consts only so the seeded regexes are unit-testable
+// without a DB.
+const (
+	runnerFullTCPPattern  = `"profile"\s*:\s*"full_tcp"`
+	runnerSYNPattern      = `"syn"\s*:\s*true`
+	runnerOSDetectPattern = `"os_detect"\s*:\s*true`
+	runnerAXFRPattern     = `"axfr"\s*:\s*true`
+)
+
+func (d *DB) seedDefaultInterceptRulesV4() error {
+	if v, _, _ := d.GetSetting("intercept_default_rules_v4"); v == "done" {
+		return nil
+	}
+	rules := []struct {
+		name     string
+		target   string // tool_name | tool_input
+		typ      string // string | regex
+		pattern  string
+		action   string
+		message  string
+		priority int
+	}{
+		{
+			name:     "[built-in] Kali runner full TCP scan",
+			target:   "tool_input",
+			typ:      "regex",
+			pattern:  runnerFullTCPPattern,
+			action:   "ask",
+			message:  "A full 65,535-port scan is noisy and slow; confirm that the engagement allows it and that the target range is narrow",
+			priority: 90,
+		},
+		{
+			name:     "[built-in] Kali runner raw SYN scan",
+			target:   "tool_input",
+			typ:      "regex",
+			pattern:  runnerSYNPattern,
+			action:   "ask",
+			message:  "A raw SYN scan requires NET_RAW and is more likely to trip IDS; confirm that raw packets are permitted",
+			priority: 90,
+		},
+		{
+			name:     "[built-in] Kali runner OS detection",
+			target:   "tool_input",
+			typ:      "regex",
+			pattern:  runnerOSDetectPattern,
+			action:   "ask",
+			message:  "OS fingerprinting is noisy and may be outside the engagement rules; confirm before enabling it",
+			priority: 90,
+		},
+		{
+			name:     "[built-in] Kali runner DNS zone transfer",
+			target:   "tool_input",
+			typ:      "regex",
+			pattern:  runnerAXFRPattern,
+			action:   "ask",
+			message:  "A DNS zone transfer is high-impact and may expose unrelated records; confirm that AXFR is explicitly authorized",
+			priority: 90,
+		},
+		{
+			name:     "[built-in] Kali runner SNMP walk",
+			target:   "tool_name",
+			typ:      "string",
+			pattern:  "mcp__kali_runner__net_snmp",
+			action:   "allow",
+			message:  "Read-only single-community SNMP walk is allowed by default",
+			priority: 90,
+		},
+	}
+	for _, r := range rules {
+		if _, err := d.Exec(`
+INSERT INTO intercept_rules(name, enabled, priority, match_target, match_type, pattern, action, message, timeout_enabled, timeout_seconds, timeout_action)
+SELECT $1, true, $2, $3, $4, $5, $6, $7, false, 60, 'deny'
+WHERE NOT EXISTS (SELECT 1 FROM intercept_rules WHERE name = $1)`,
+			r.name, r.priority, r.target, r.typ, r.pattern, r.action, r.message,
+		); err != nil {
+			return fmt.Errorf("rule %q: %w", r.name, err)
+		}
+	}
+	return d.SetSetting("intercept_default_rules_v4", "done")
 }

@@ -367,6 +367,7 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 }
 
 func (s *Server) loadRestoredTask(taskID int64) {
+	s.syncTaskScope(taskID)
 	id := strconv.FormatInt(taskID, 10)
 	var restored *Task
 	for _, task := range s.m.LoadExisting() {

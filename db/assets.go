@@ -813,7 +813,9 @@ type UpsertOtherServiceReq struct {
 	Port        int
 	ServiceName string
 	Auth        []map[string]any
-	TaskID      int64
+	// Extra is merged into assets.extra (e.g. nmap product/version/scripts).
+	Extra  map[string]any
+	TaskID int64
 }
 
 // UpsertOtherService inserts or merges a non-HTTP service asset.
@@ -865,6 +867,14 @@ func (s *AssetStore) UpsertOtherService(req UpsertOtherServiceReq) (int64, error
 	if err != nil {
 		return 0, err
 	}
+	extraJSON := "{}"
+	if len(req.Extra) > 0 {
+		raw, err := json.Marshal(req.Extra)
+		if err != nil {
+			return 0, err
+		}
+		extraJSON = string(raw)
+	}
 
 	var domainVal, rootDomainVal, ipVal, csegVal any
 	if domain != "" {
@@ -884,9 +894,9 @@ func (s *AssetStore) UpsertOtherService(req UpsertOtherServiceReq) (int64, error
 	err = s.tx.QueryRow(`
 INSERT INTO assets(
     type, service_type, service_name, domain, ip, port, root_domain,
-    c_segment, auth, company_id, company_source, task_ids
+    c_segment, auth, company_id, company_source, task_ids, extra
 )
-VALUES ('service', 'other', $1, $2, $3, $4, $5, $6::cidr, $7::jsonb[], $8, 'scope', $9::bigint[])
+VALUES ('service', 'other', $1, $2, $3, $4, $5, $6::cidr, $7::jsonb[], $8, 'scope', $9::bigint[], $10::jsonb)
 ON CONFLICT (COALESCE(domain,''), COALESCE(ip,''), port, service_name) WHERE type = 'service' AND service_type = 'other' DO UPDATE SET
     domain     = COALESCE(EXCLUDED.domain,     assets.domain),
     ip         = COALESCE(EXCLUDED.ip,         assets.ip),
@@ -897,6 +907,7 @@ ON CONFLICT (COALESCE(domain,''), COALESCE(ip,''), port, service_name) WHERE typ
             FROM unnest(assets.auth || EXCLUDED.auth) AS elem
         )
     ),
+    extra      = assets.extra || EXCLUDED.extra,
     task_ids   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
     company_id = CASE
         WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
@@ -910,7 +921,7 @@ ON CONFLICT (COALESCE(domain,''), COALESCE(ip,''), port, service_name) WHERE typ
     last_seen  = now()
 RETURNING id`,
 		serviceName, domainVal, ipVal, req.Port, rootDomainVal,
-		csegVal, authJSON, companyID, taskIDs,
+		csegVal, authJSON, companyID, taskIDs, extraJSON,
 	).Scan(&id)
 	if err != nil {
 		return 0, err

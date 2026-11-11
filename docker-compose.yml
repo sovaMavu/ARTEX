@@ -35,6 +35,17 @@ services:
       ARTEX_LLM_BASE_URL: ${ARTEX_LLM_BASE_URL:-}
       ARTEX_LLM_PROXY: ${ARTEX_LLM_PROXY:-}
       ARTEX_JWT_KEY_DIR: /app/keys
+      # Password login is OFF by default: the console opens straight onto the
+      # launcher. Set ARTEX_REQUIRE_AUTH=1 to restore the old login (no rebuild).
+      ARTEX_REQUIRE_AUTH: ${ARTEX_REQUIRE_AUTH:-0}
+      # With login off, the API is only served to peers inside these networks
+      # (comma separated CIDRs, or a bare IP meaning that one host). Defaults to
+      # loopback, so keep ARTEX_BIND_ADDR on 127.0.0.1.
+      ARTEX_NOAUTH_CIDRS: ${ARTEX_NOAUTH_CIDRS:-127.0.0.0/8,::1/128}
+      # Signed scope export for the optional kali-runner (nonweb profile).
+      # ARTEX_SCOPE_KEY must equal RUNNER_SCOPE_KEY. Unset disables export.
+      ARTEX_SCOPE_KEY: ${ARTEX_SCOPE_KEY:-}
+      ARTEX_SCOPE_DIR: ${ARTEX_SCOPE_DIR:-/app/data/scopes}
     ports:
       - "${ARTEX_BIND_ADDR:-127.0.0.1}:8787:8787"
       - "127.0.0.1:8788:8788"
@@ -48,7 +59,69 @@ services:
       # Mount skills/ from the project root into the container (overriding the image's built-in /app/skills);
       # skill changes require no image rebuild — the container reads the host copy.
       - ./skills:/app/skills
+    networks:
+      - default
+      - control
     restart: unless-stopped
+
+  # Typed non-web capability runner (Phase 1 network pack). Opt in with:
+  #   docker compose --profile nonweb up -d --build kali-runner
+  # The runner has no generic command endpoint; every call is checked against a
+  # signed per-task scope file exported by artex. Keep it off the default and
+  # postgres networks so it cannot reach the database or the unauthenticated API.
+  kali-runner:
+    profiles: ["nonweb"]
+    build:
+      context: ./runner
+    image: artex-kali-runner:local
+    environment:
+      # The runner refuses to start if either secret is empty or too short.
+      # Defaults are empty so the default (non-runner) compose profile still
+      # parses without requiring runner secrets.
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_SCOPE_KEY: ${RUNNER_SCOPE_KEY:-}
+      SCOPE_DIR: /scopes
+      ARTIFACT_ROOT: /artifacts
+      TOOL_PACKS: net
+      HOME: /tmp
+    volumes:
+      # Read-only signed authorization files; written by artex, never by the runner.
+      - ./data/scopes:/scopes:ro
+      # Task artifacts (result.json, stdout/stderr, manifests) under data/tasks.
+      - ./data/tasks:/artifacts
+    networks:
+      - control
+      - engagement
+    cap_drop: [ALL]
+    # cap_add: [NET_RAW]  # only if SYN/OS detection is enabled in the scope policy
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /run:size=64m
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2
+    expose: ["8899"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8899/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  # Implicit default network: postgres + artex only.
+  default:
+  # ARTEX <-> runner MCP control plane. internal keeps the runner off the
+  # internet through this interface; it can still reach artex on the same net.
+  control:
+    internal: true
+  # Runner -> target network. Compose cannot enforce an egress allowlist on a
+  # normal bridge: use a dedicated VM/netns with an iptables/nftables allowlist
+  # for client work. Set internal: true for a lab/LAN-only engagement.
+  engagement:
 
 volumes:
   pgdata:

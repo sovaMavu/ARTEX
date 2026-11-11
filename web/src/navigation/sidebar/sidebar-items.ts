@@ -6,6 +6,8 @@ import {
   Brain,
   Bug,
   ClipboardList,
+  Crosshair,
+  FileText,
   FolderOpen,
   FolderSync,
   LayoutDashboard,
@@ -66,6 +68,8 @@ export const sidebarItems: NavGroup[] = [
     id: 1,
     label: "Functions",
     items: [
+      { id: "overview", title: "New Assessment", url: "/overview", icon: Crosshair },
+      { id: "templates", title: "Templates", url: "/templates", icon: FileText },
       { id: "dashboard", title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
       { id: "chat", title: "Chat", url: "/chat", icon: MessageSquare },
       { id: "tasks", title: "Tasks", url: "/function/tasks", icon: Target },

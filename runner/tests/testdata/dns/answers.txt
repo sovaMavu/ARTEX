@@ -1,0 +1,11 @@
+; <<>> DiG 9.18.28 <<>> +noall +answer A example.com
+;; global options: +cmd
+example.com.		300	IN	A	203.0.113.10
+example.com.		300	IN	AAAA	2001:db8::10
+example.com.		3600	IN	MX	10 mail.example.com.
+_sip._tcp.example.com.	300	IN	SRV	10 60 5060 sip.example.com.
+example.com.		300	IN	TXT	"v=spf1 -all"
+www.example.com.	300	IN	CNAME	example.com.
+example.com.		3600	IN	NS	ns1.example.com.
+example.com.		3600	IN	SOA	ns1.example.com. hostmaster.example.com. 2024010101 7200 3600 1209600 3600
+example.com.		300	IN	CAA	0 issue "letsencrypt.org"

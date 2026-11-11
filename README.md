@@ -70,6 +70,18 @@ Sync asset data directly from [ScopeSentry](https://github.com/Autumn-27/ScopeSe
 - Choose the targets and asset types to sync by **project** or **task** (domains / subdomains / IPs / ports / sites / endpoints…);
 - One-click import, merged by company asset scope, straight into ARTEX's asset graph for agents to explore.
 
+## Non-web capability runner (optional)
+
+ARTEX can delegate network reconnaissance to a separate, typed MCP service instead of a shell. The `kali-runner` exposes only fixed tools (`net_nmap`, `net_dns`, `net_tls`, `net_snmp`, `net_smb`, `net_ldap`, `net_ssh`, `job_wait`, `job_cancel`) — there is no generic command endpoint — and verifies every call against an HMAC-signed per-task scope file exported by ARTEX. It runs in the opt-in `nonweb` Compose profile on dedicated `control` and `engagement` networks, with no route to Postgres.
+
+```bash
+# In .env: generate RUNNER_TOKEN and a 32-byte base64 scope key.
+# RUNNER_SCOPE_KEY and ARTEX_SCOPE_KEY must be identical (ARTEX signs, the runner verifies).
+docker compose --profile nonweb up -d --build kali-runner
+```
+
+Then register it under MCP servers in ARTEX: transport `http`, URL `http://kali-runner:8899/mcp`, header `Authorization: Bearer $RUNNER_TOKEN`. Scope export is disabled unless `ARTEX_SCOPE_KEY` is set, so the default profile is unaffected. The shipped `network-recon` skill is visible to `auto`, `pentest`, and `worker` agents by default. See [runner/HOW-IT-WORKS.md](runner/HOW-IT-WORKS.md) for a task-oriented guide covering how it works and how to start it with or without Docker/ARTEX, and [runner/README.md](runner/README.md) for the full operator runbook, scope contract, artifacts, and security model.
+
 ---
 
 ## Installation

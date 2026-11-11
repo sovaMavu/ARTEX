@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -Pn -n -sT --script safe -oX - 10.10.0.5" start="1762670400" version="7.95">
+  <host starttime="1762670400" endtime="1762670412">
+    <status state="up" reason="syn-ack"/>
+    <address addr="10.10.0.5" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="nginx" version="1.24.0"/>
+        <script id="ssl-cert" output="Subject: commonName=example.com"/>
+      </port>
+    </ports>
+    <hostscript>
+      <script id="smb2-security-mode" output="Message signing enabled but not required"/>
+      <script id="clock-skew" output="0s"/>
+    </hostscript>
+  </host>
+</nmaprun>

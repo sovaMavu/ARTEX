@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Check, KeyRound, LogOut } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -12,10 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { auth } from "@/lib/auth";
 import { cn, getInitials } from "@/lib/utils";
-
-import { ChangePasswordDialog } from "./change-password-dialog";
 
 export function AccountSwitcher({
   users,
@@ -29,12 +26,6 @@ export function AccountSwitcher({
   }>;
 }) {
   const [activeUser, setActiveUser] = useState(users[0]);
-  const [pwOpen, setPwOpen] = useState(false);
-
-  function handleLogout() {
-    auth.clearToken();
-    window.location.href = "/login";
-  }
 
   if (!activeUser) {
     return null;
@@ -78,17 +69,11 @@ export function AccountSwitcher({
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setPwOpen(true)}>
-            <KeyRound />
-            Change password
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-            <LogOut />
-            Sign out
-          </DropdownMenuItem>
+          <div className="px-1.5 py-1 text-muted-foreground text-xs">
+            Local session — no password. The API is limited to this machine.
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </>
   );
 }

@@ -530,6 +530,11 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	if hooks != nil { // typed-nil guard: only set when concrete (avoids harness panic)
 		opts.Hooks = hooks
 	}
+	if as != nil && taskID > 0 {
+		// Ingest kali-runner observations before the guard's PostToolUse runs.
+		// The wrapper delegates PreToolUse/Stop unchanged and is best-effort.
+		opts.Hooks = WithObservationIngestion(hooks, as, w.workDir, taskID)
+	}
 	if w.tx != nil { // persist raw LLM conversation; one file per worked intent
 		opts.Transcript = w.tx
 		opts.SessionID = WorkerSessionID(ts.ID(), intent.ID)

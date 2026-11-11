@@ -1,0 +1,19 @@
+version: 1
+
+dn: CN=Administrator,CN=Users,DC=corp,DC=local
+objectClass: top
+objectClass: person
+cn: Administrator
+description: Test user
+memberOf: CN=Domain Admins,CN=Users,DC=corp,DC=local
+
+dn: CN=Guest,CN=Users,DC=corp,DC=local
+objectClass: person
+cn:: R3Vlc3Q=
+description: This is a long
+ folded description
+
+dn: CN=svc-sql,OU=Service Accounts,DC=corp,DC=local
+objectClass: person
+cn: svc-sql
+servicePrincipalName: MSSQLSvc/sql01.corp.local:1433

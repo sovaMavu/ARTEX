@@ -43,8 +43,13 @@ type Server struct {
 	engine *Engine
 	ctx    context.Context
 
-	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into keyDir/jwt.key
+	skillDir string   // root directory for skill subdirectories
+	jwtKey   []byte   // HS256 signing key from keyDir/jwt.key; nil when login is off and no key exists
+	auth     authMode // login on/off + which peers may use the open path
+
+	// scope exports signed network-authorization files for the kali-runner.
+	// nil when ARTEX_SCOPE_KEY is unset (non-web runner profile disabled).
+	scope *ScopeExporter
 
 	scrubSecrets bool // drop ARTEX_PG_DSN and the API keys from the environment once read (binary only)
 
@@ -146,11 +151,20 @@ type triggeredRun struct {
 }
 
 func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string, opts ...Option) *Server {
-	key, err := loadOrCreateJWTKey(keyDir, dataDir)
+	// Login is off unless ARTEX_REQUIRE_AUTH=1 (authModeFromEnv). In the open mode
+	// the key is read-only: a missing key must not create one, because the engine's
+	// key dir can sit on a read-only data volume and the open path never validates
+	// a JWT. Switching the env on creates the key on the next start.
+	mode := authModeFromEnv()
+	key, err := loadOrCreateJWTKey(keyDir, dataDir, !mode.require)
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
+	if mode.require && len(key) == 0 {
+		log.Fatalf("[auth] ARTEX_REQUIRE_AUTH=1 but no JWT key could be loaded from %s", keyDir)
+	}
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, auth: mode,
+		chatBusy:   map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
@@ -159,7 +173,24 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	for _, o := range opts {
 		o(s)
 	}
-	s.initSetupToken()
+	// Signed scope export is opt-in: without ARTEX_SCOPE_KEY the non-web runner
+	// profile is disabled and no files are written. A malformed key is fatal
+	// rather than silently disabling an authorization boundary.
+	if exp, err := NewScopeExporterFromEnv(m.dir, m.pg); err != nil {
+		log.Fatalf("[scope] %v", err)
+	} else if exp != nil {
+		s.scope = exp
+		log.Printf("[scope] exporting signed scope files to %s", exp.Dir)
+	} else {
+		log.Printf("[scope] ARTEX_SCOPE_KEY not set — non-web runner scope export disabled")
+	}
+	// The setup token only means anything while password login is enabled;
+	// printing it otherwise invites use of a page that no longer exists.
+	if s.auth.require {
+		s.initSetupToken()
+	} else {
+		log.Printf("[auth] LOGIN DISABLED — API is open to loopback peers only; set ARTEX_REQUIRE_AUTH=1 to restore password login")
+	}
 	s.initSideQuestions()
 	// Circuit-breaker thresholds/cooldowns are hot parameters on the failure path; push the global retry policy to the Registry once at startup,
 	// and again on every policy save (saveLLMRetryPolicy).
@@ -273,6 +304,9 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	go s.reconcileConcurrency()
 	s.startTaskArchiveWorker()
 	s.wireInterceptReviewer() // LLM fallback approval: commands that hit no interception rule go to the model for judgment
+	if s.scope != nil {
+		go s.runScopeReconciler(s.ctx)
+	}
 	return s
 }
 
@@ -670,11 +704,15 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerSideRoutes(mux)
 
-	// Auth routes — exempt from JWT check (handled in requireAuth)
-	mux.HandleFunc("GET /api/auth/status", s.authStatus)
-	mux.HandleFunc("POST /api/auth/init", s.authInit)
-	mux.HandleFunc("POST /api/auth/login", s.authLogin)
-	mux.HandleFunc("POST /api/auth/change-password", s.authChangePassword)
+	// Auth routes — exempt from JWT check (handled in requireAuth). Registered only
+	// when password login is enabled: with login off they would be dead endpoints
+	// whose frontend pages no longer exist.
+	if s.auth.require {
+		mux.HandleFunc("GET /api/auth/status", s.authStatus)
+		mux.HandleFunc("POST /api/auth/init", s.authInit)
+		mux.HandleFunc("POST /api/auth/login", s.authLogin)
+		mux.HandleFunc("POST /api/auth/change-password", s.authChangePassword)
+	}
 
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/stats", s.stats)
@@ -1545,12 +1583,12 @@ type createTaskReq struct {
 	CategoryID           *int64   `json:"category_id,omitempty"`
 	Description          string   `json:"description"`
 	Goal                 string   `json:"goal"`
-	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task on; omitted/null = use the active profile
-	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first entry takes effect initially
-	SourceTaskIDs        []string `json:"source_task_ids,omitempty"`   // direct, read-only inherited source tasks
-	CompanyIDs           []int64  `json:"company_ids,omitempty"`       // links the company scope and snapshots its current assets; does not copy assets or force intent generation
+	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`  // the LLM profile to run this task on; omitted/null = use the active profile
+	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"` // ordered task-level profile chain; the first entry takes effect initially
+	SourceTaskIDs        []string `json:"source_task_ids,omitempty"` // direct, read-only inherited source tasks
+	CompanyIDs           []int64  `json:"company_ids,omitempty"`     // links the company scope and snapshots its current assets; does not copy assets or force intent generation
 	TimeoutSeconds       int      `json:"timeout_seconds"`
-	LLMRotate            *bool    `json:"llm_rotate"`             // task-level timeout (seconds); 0/omitted = no limit
+	LLMRotate            *bool    `json:"llm_rotate"`                  // task-level timeout (seconds); 0/omitted = no limit
 	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
 	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
 	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
@@ -2002,6 +2040,7 @@ func (s *Server) taskScopeAdd(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	s.syncTaskScope(taskID)
 	writeJSON(w, 200, ts)
 }
 
@@ -2031,6 +2070,7 @@ func (s *Server) taskScopeDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "scope row not found")
 		return
 	}
+	s.syncTaskScope(taskID)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -4011,11 +4051,20 @@ func (s *Server) gc(w http.ResponseWriter, r *http.Request) {
 
 // --- utils ---
 
+// cors echoes the caller's own origin instead of "*". With password login the
+// wildcard only cost a token; with login off (no token, loopback-only) a wildcard
+// would let any website the operator visits read every API response — tasks,
+// findings, LLM records. The frontend is same-origin in both dev (rewrite) and
+// production (embedded static export), so nothing legitimate needs a cross-origin
+// read; the echo keeps third-party tooling that sends an Origin working.
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if o := r.Header.Get("Origin"); o != "" && o != "null" {
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
 			return

@@ -61,23 +61,36 @@ var jwtLegacyBaseDir = config.BaseDir
 // at dataDir/jwt.key, then at BaseDir()/jwt.key, is migrated (key preserved, so
 // sessions stay valid) and the old file removed. Otherwise a random key is
 // generated. An existing key file is never overwritten.
-func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
+//
+// readOnly is the no-auth path: it looks the key up without creating, moving or
+// writing anything, so a deployment with login off never depends on a writable key
+// directory (the Docker image's data volume is read-only to the recording proxy).
+// A nil key from readOnly means "no key on disk" — JWT validation then fails
+// closed, which is correct because the open path does not consult it. Switching
+// ARTEX_REQUIRE_AUTH=1 creates the key on the next start.
+func loadOrCreateJWTKey(keyDir, dataDir string, readOnly bool) ([]byte, error) {
+	path := filepath.Join(keyDir, jwtKeyFilename)
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return validateJWTKey(path, data)
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read jwt key: %w", err)
+	}
+	if readOnly {
+		return nil, nil
+	}
 	if err := os.MkdirAll(keyDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create jwt key dir: %w", err)
 	}
-	path := filepath.Join(keyDir, jwtKeyFilename)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := migrateJWTKey(path, dataDir); err != nil {
 			return nil, err
 		}
 	}
-	data, err := os.ReadFile(path)
+	data, err = os.ReadFile(path)
 	if err == nil {
-		key := strings.TrimSpace(string(data))
-		if len(key) < 32 {
-			return nil, fmt.Errorf("jwt key %s is shorter than 32 bytes; fix or remove it (it is never overwritten)", path)
-		}
-		return []byte(key), nil
+		return validateJWTKey(path, data)
 	}
 	if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read jwt key: %w", err)
@@ -95,6 +108,15 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	}
 	log.Printf("[auth] new JWT key written to %s", path)
 	return buf, nil
+}
+
+// validateJWTKey trims a key file's bytes and enforces the 32-byte floor.
+func validateJWTKey(path string, data []byte) ([]byte, error) {
+	key := strings.TrimSpace(string(data))
+	if len(key) < 32 {
+		return nil, fmt.Errorf("jwt key %s is shorter than 32 bytes; fix or remove it (it is never overwritten)", path)
+	}
+	return []byte(key), nil
 }
 
 // migrateJWTKey copies the first legacy key found (dataDir, then BaseDir) to dst
@@ -166,6 +188,9 @@ func signJWT(key []byte) (string, error) {
 
 // verifyJWT returns true when tokenStr is a valid, non-expired HS256 token.
 func verifyJWT(tokenStr string, key []byte) bool {
+	if len(key) == 0 {
+		return false // no key on disk = nothing can be valid (no-auth deployments)
+	}
 	t, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method")
@@ -187,8 +212,16 @@ func extractToken(r *http.Request) string {
 	return r.URL.Query().Get("token")
 }
 
-// requireAuth wraps h with JWT validation.
-// /api/auth/* and /api/health are exempt.
+// requireAuth wraps h with JWT validation unless login is disabled.
+//
+// Login-off (the default) is open only for peers inside the no-auth circle
+// (loopback by default, see authModeFromEnv). With no token involved, writes are
+// additionally checked against Origin so a page on another site cannot drive the
+// API in the operator's browser — the API can register custom shell tools and
+// write files, so this is the only thing standing between a malicious tab and the
+// engine once the JWT gate is gone.
+//
+// /api/auth/* and /api/health are exempt in both modes.
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -196,6 +229,17 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
+		if s.openFor(r) {
+			// Set before the handler so it survives writeErr.
+			w.Header().Set("X-ARTEX-Mode", "noauth")
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {
+				writeErr(w, 403, "cross-origin request rejected while login is disabled")
+				return
+			}
+			h.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("X-ARTEX-Mode", "auth")
 		tok := extractToken(r)
 		if tok == "" {
 			writeErr(w, 401, "Unauthorized")

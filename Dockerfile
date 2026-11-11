@@ -95,11 +95,17 @@ RUN set -eux; \
 # preinstalled (--install-all-deps) so scans never need pip at runtime, which
 # would fail under a program's egress allowlist.
 ARG BBOT_VERSION=3.0.2
+# Two retries: installing ~142 module dependency sets over the network is flaky.
+# A failed module is remembered in the bbot config ("--retry-deps to retry"),
+# which the retry clears by removing the config the first attempt created.
 RUN set -eux; \
     python -m venv /opt/bbot; \
     /opt/bbot/bin/pip install --no-cache-dir "bbot==${BBOT_VERSION}"; \
     ln -s /opt/bbot/bin/bbot /usr/local/bin/bbot; \
-    bbot -y --install-all-deps; \
+    bbot -y --install-all-deps || { \
+        rm -rf /root/.config/bbot; \
+        bbot -y --install-all-deps; \
+    }; \
     bbot --version >/dev/null; \
     bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness >/dev/null 2>&1 || true; \
     bbot --dry-run -t example.com -m wafw00f,paramminer_getparams,lightfuzz,sslcert,gowitness --no-color >/tmp/bbot-dry.log 2>&1 || true; \

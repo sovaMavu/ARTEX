@@ -56,6 +56,13 @@ export interface TaskTemplate {
   goal: string;
   category_id?: number | null; // preset category; null/absent = none
   intercept_rules?: AssetInterceptRuleInput[]; // preset task-level interception/allow rules
+  // Launch settings carried alongside the prompt. Optional: templates created before
+  // these existed (and every template made in the task-creation form) omit them, and
+  // the launcher falls back to the backend default (no limit, no seed intent).
+  scanner_profile?: "quick" | "standard" | "deep" | null;
+  timeout_seconds?: number | null; // 0/null = no wall-clock limit
+  seed_first_intent?: boolean | null;
+  block_ip_targets?: boolean | null; // block bare IP-range targets via a task intercept rule
   created_at: string;
   updated_at: string;
 }
@@ -1321,7 +1328,6 @@ export type TaskCredential = TaskCredentialInput & {
   created_at: string;
   updated_at: string;
 };
-
 
 export interface AssetInterceptRule {
   id: number;

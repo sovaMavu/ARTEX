@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -Pn -n -sU --top-ports 100 -oX - 10.10.0.5" start="1762670400" version="7.95">
+  <host starttime="1762670400" endtime="1762670412">
+    <status state="up" reason="echo-reply"/>
+    <address addr="10.10.0.5" addrtype="ipv4"/>
+    <ports>
+      <port protocol="udp" portid="161">
+        <state state="open" reason="udp-response"/>
+        <service name="snmp" product="net-snmp" method="probed" conf="10"/>
+      </port>
+      <port protocol="udp" portid="500">
+        <state state="open|filtered" reason="no-response"/>
+        <service name="isakmp" method="table" conf="3"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>

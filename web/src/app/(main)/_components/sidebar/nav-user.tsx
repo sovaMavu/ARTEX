@@ -1,23 +1,17 @@
 "use client";
 
-import * as React from "react";
-
-import { EllipsisVertical, KeyRound, LogOut } from "lucide-react";
+import { EllipsisVertical } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
-import { auth } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
-
-import { ChangePasswordDialog } from "./change-password-dialog";
 
 export function NavUser({
   user,
@@ -29,14 +23,6 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
-  const [pwOpen, setPwOpen] = React.useState(false);
-
-  function handleLogout() {
-    auth.clearToken();
-    // Hard navigation: let the browser start a fresh request with the cleared cookie,
-    // so middleware reads the empty token correctly and lets /login through
-    window.location.href = "/login";
-  }
 
   return (
     <SidebarMenu>
@@ -77,19 +63,12 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setPwOpen(true)}>
-              <KeyRound />
-              Change password
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-              <LogOut />
-              Sign out
-            </DropdownMenuItem>
+            <div className="px-1 py-1.5 text-muted-foreground text-xs">
+              Local session — no password. The API is limited to this machine.
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
-      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </SidebarMenu>
   );
 }

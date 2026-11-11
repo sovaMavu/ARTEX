@@ -1,0 +1,21 @@
+{
+  "banner": {
+    "raw": "SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5",
+    "software": "OpenSSH_8.2p1"
+  },
+  "kex": [
+    {"algorithm": "diffie-hellman-group1-sha1", "notes": ["warn", "using weak algorithm"]},
+    {"algorithm": "curve25519-sha256", "notes": []}
+  ],
+  "enc": [
+    {"algorithm": "aes128-cbc", "notes": ["warn", "using weak cipher"]},
+    {"algorithm": "chacha20-poly1305@openssh.com", "notes": []}
+  ],
+  "mac": [
+    {"algorithm": "hmac-md5", "notes": ["fail", "using broken MAC"]},
+    {"algorithm": "hmac-sha2-256", "notes": []}
+  ],
+  "host_keys": [
+    {"algorithm": "ssh-rsa", "notes": ["warn", "using weak key"]}
+  ]
+}

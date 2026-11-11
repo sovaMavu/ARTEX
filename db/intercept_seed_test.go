@@ -46,3 +46,59 @@ func TestDeleteEndpointPathPattern(t *testing.T) {
 		}
 	}
 }
+
+// The runner approval gates match the serialized MCP tool arguments. They must
+// survive whitespace/newlines added by the JSON marshaler and must not fire on
+// the false/other-profile cases.
+func TestKaliRunnerInterceptPatterns(t *testing.T) {
+	cases := []struct {
+		name    string
+		pattern string
+		hit     []string
+		miss    []string
+	}{
+		{
+			name:    "full_tcp",
+			pattern: runnerFullTCPPattern,
+			hit: []string{
+				`{"profile":"full_tcp","target":"10.0.0.1"}`,
+				"{\n  \"profile\" : \"full_tcp\"\n}",
+			},
+			miss: []string{
+				`{"profile":"top1000"}`,
+				`{"profile":"custom","ports":"1-1024"}`,
+			},
+		},
+		{
+			name:    "syn",
+			pattern: runnerSYNPattern,
+			hit:     []string{`{"syn":true}`, "{\"syn\" :\ttrue}"},
+			miss:    []string{`{"syn":false}`, `{"os_detect":true}`},
+		},
+		{
+			name:    "os_detect",
+			pattern: runnerOSDetectPattern,
+			hit:     []string{`{"os_detect":true}`},
+			miss:    []string{`{"os_detect":false}`, `{"syn":true}`},
+		},
+		{
+			name:    "axfr",
+			pattern: runnerAXFRPattern,
+			hit:     []string{`{"axfr":true,"target":"example.com"}`},
+			miss:    []string{`{"axfr":false}`, `{"record_types":["AXFR"]}`},
+		},
+	}
+	for _, c := range cases {
+		re := regexp.MustCompile(c.pattern)
+		for _, s := range c.hit {
+			if !re.MatchString(s) {
+				t.Errorf("%s: should have hit: %s", c.name, s)
+			}
+		}
+		for _, s := range c.miss {
+			if re.MatchString(s) {
+				t.Errorf("%s: false interception: %s", c.name, s)
+			}
+		}
+	}
+}

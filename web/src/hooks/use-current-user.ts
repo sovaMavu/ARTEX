@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { OPERATOR, type Operator } from "@/lib/operator";
 
-import { auth, type CurrentUser } from "@/lib/auth";
-
-const FALLBACK: CurrentUser = { id: "1", name: "ARTEX", username: "artex", email: "", avatar: "", role: "operator" };
-
-export function useCurrentUser(): CurrentUser {
-  const [user, setUser] = useState<CurrentUser>(FALLBACK);
-
-  useEffect(() => {
-    const u = auth.getCurrentUser();
-    if (u) setUser(u);
-  }, []);
-
-  return user;
+/**
+ * There is one operator and no login: the backend trusts loopback peers
+ * (server/auth_mode.go). Kept as a hook so call sites kept their shape and a future
+ * real auth layer only has to change this file.
+ */
+export function useCurrentUser(): Operator {
+  return OPERATOR;
 }
