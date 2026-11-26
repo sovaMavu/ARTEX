@@ -689,13 +689,22 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	// EscalateMaxTokens stays false: don't raise the cap and retry on truncation, to
 	// avoid burning tokens in a resume loop.
 	reply, err := agentcore.Run(ctx, agentcore.Options{
-		Provider:       prov,
-		SystemPrompt:   []string{"You are a connection test. Just output the two characters OK — no thinking, no explanation, nothing else."},
-		Tools:          []actool.CoreTool{}, // not nil: nil means the SDK's unconfined file and shell tools
-		PermissionMode: acperm.ModeBypass,
-		MaxTurns:       1,
-		MaxTokens:      8192,
-		NonStreaming:   !c.Stream, // use this profile's real send/receive mode for the connection test
+		Provider:     prov,
+		SystemPrompt: []string{"You are a connection test. Just output the two characters OK - no thinking, no explanation, nothing else."},
+		// Tools must be empty (not nil): nil means the SDK's unconfined file and
+		// shell tools. DisableBackgroundTasks matters just as much: without it the
+		// SDK appends TaskOutput/TaskStop/TaskList/Monitor even to an empty Tools
+		// slice, and tool-calling models (e.g. Qwen3.5 served by Ollama) answer the
+		// ping with one of those instead of text. The reply content is then empty
+		// (finish_reason "tool_calls"), so the test failed with "no content" on a
+		// perfectly healthy endpoint. A connection test wants to verify transport,
+		// auth and decode, not agent behaviour.
+		Tools:                  []actool.CoreTool{},
+		DisableBackgroundTasks: true,
+		PermissionMode:         acperm.ModeBypass,
+		MaxTurns:               1,
+		MaxTokens:              8192,
+		NonStreaming:           !c.Stream, // use this profile's real send/receive mode for the connection test
 	}, "ping")
 	lat := time.Since(start)
 	if err != nil {
