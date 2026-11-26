@@ -1,11 +1,10 @@
 "use client";
 
+import type * as React from "react";
 import type { ReactNode } from "react";
-import * as React from "react";
 
 import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { auth } from "@/lib/auth";
 import { getClientCookie } from "@/lib/cookie.client";
 import {
   SIDEBAR_COLLAPSIBLE_VALUES,
@@ -29,22 +28,8 @@ function readPref<T extends string>(key: string, allowed: readonly T[], fallback
 }
 
 export default function Layout({ children }: Readonly<{ children: ReactNode }>) {
-  // Client-side auth gate — replaces the Next proxy/middleware that static export
-  // disables. No token → bounce to /login; render nothing until confirmed so no
-  // protected UI (or its API calls) flashes for a logged-out visitor.
-  const [authed, setAuthed] = React.useState(false);
-  React.useEffect(() => {
-    if (auth.getToken()) {
-      setAuthed(true);
-    } else {
-      // When the client-side guard sees a logged-out state, the cookie must be cleared too: otherwise proxy.ts, going
-      // by "cookie exists" alone, would bounce us from /login back to the main UI and ping-pong with this guard
-      // in an infinite redirect → blank screen (triggered when cookie and localStorage disagree).
-      auth.clearToken();
-      window.location.href = "/login";
-    }
-  }, []);
-
+  // No auth gate: password login is off by default and the Go backend gates the API
+  // by peer address instead (server/auth_mode.go). The console renders immediately.
   const defaultOpen = typeof document === "undefined" ? true : getClientCookie("sidebar_state") !== "false";
   const variant = readPref<SidebarVariant>(
     "sidebar_variant",
@@ -56,8 +41,6 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
     SIDEBAR_COLLAPSIBLE_VALUES,
     PREFERENCE_DEFAULTS.sidebar_collapsible,
   );
-
-  if (!authed) return null;
 
   return (
     <SidebarProvider
