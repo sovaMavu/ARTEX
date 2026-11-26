@@ -221,6 +221,9 @@ RUN set -eux; \
 # would fail under a program's egress allowlist.
 ARG BBOT_VERSION=3.0.2
 # arm64: bbot's Chrome and retirejs's Node are x86-64; use native builds.
+# Two retries: installing ~142 module dependency sets over the network is flaky.
+# A failed module is remembered in the bbot config ("--retry-deps to retry"),
+# which the retry clears by removing the config the first attempt created.
 RUN set -eux; \
     python -m venv /opt/bbot; \
     /opt/bbot/bin/pip install --no-cache-dir "bbot==${BBOT_VERSION}"; \
@@ -232,7 +235,10 @@ RUN set -eux; \
       bbot_dir="$(/opt/bbot/bin/python -c 'import bbot, os; print(os.path.dirname(bbot.__file__))')"; \
       sed -i 's/linux-x64/linux-arm64/g' "$bbot_dir/modules/retirejs.py"; \
     fi; \
-    bbot -y --install-all-deps; \
+    bbot -y --install-all-deps || { \
+        rm -rf /root/.config/bbot; \
+        bbot -y --install-all-deps; \
+    }; \
     if [ "${TARGETARCH:-amd64}" = "arm64" ]; then \
       printf '\nmodules:\n  gowitness:\n    chrome_path: /usr/bin/chromium\n' >> /root/.config/bbot/bbot.yml; \
     fi; \

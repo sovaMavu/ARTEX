@@ -1,0 +1,54 @@
+# ARTEX portable stack - uses the pre-built image, never builds.
+# Restore script writes .env from machine.env before first start.
+#
+# Container names are pinned so they are identical no matter which folder (or
+# drive letter) the bundle is unpacked into. Compose would otherwise derive the
+# project prefix from the folder name - on a USB key that could be anything.
+# The project name is pinned too, so the network and volume are predictable.
+name: artexportable
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: artex-postgres-1
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-artex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-artex}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-artex} -d ${POSTGRES_DB:-artex}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  artex:
+    image: artex:local
+    container_name: artex-artex-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ARTEX_PG_DSN: postgres://${POSTGRES_USER:-artex}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artex}?sslmode=disable
+      ARTEX_JWT_KEY_DIR: /app/keys
+      # Login off by default (console opens straight onto the launcher).
+      # ARTEX_REQUIRE_AUTH=1 restores the old password login.
+      ARTEX_REQUIRE_AUTH: ${ARTEX_REQUIRE_AUTH:-0}
+      ARTEX_NOAUTH_CIDRS: ${ARTEX_NOAUTH_CIDRS:-127.0.0.0/8,::1/128}
+    ports:
+      - "${ARTEX_BIND_ADDR:-127.0.0.1}:8787:8787"
+      - "127.0.0.1:8788:8788"
+    volumes:
+      # Relative paths - the whole folder is self-contained and can live on
+      # any drive letter on the target machine.
+      - ./data:/app/data
+      - ./keys:/app/keys
+      # Only mounted if skills/ exists; the image already ships all 10 skills,
+      # so this is purely so you can edit them without a rebuild.
+      - ./skills:/app/skills
+    restart: unless-stopped
+
+volumes:
+  pgdata:
