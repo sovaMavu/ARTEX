@@ -29,6 +29,11 @@ func (s *Server) launchTask(t *Task, seedText string, seedFirstIntent bool) {
 	if !s.engine.beginTaskOperation(t.ID) {
 		return
 	}
+	// A freshly created task has no scope yet; still write a valid empty signed
+	// file so a missing file never looks like a deployment error.
+	if id, err := strconv.ParseInt(t.ID, 10, 64); err == nil {
+		s.syncTaskScope(id)
+	}
 	s.seed(t, seedText)
 	if seedFirstIntent {
 		s.seedFirstIntent(t)

@@ -1,0 +1,22 @@
+{
+  "target": "10.10.0.5",
+  "shares": [
+    {"name": "ADMIN$", "comment": "Remote Admin", "access": "READ"},
+    {"name": "Public", "comment": "Public files"}
+  ],
+  "users": [
+    {"username": "Administrator", "rid": 500, "enabled": true, "domain": "CORP"},
+    {"username": "guest", "rid": 501, "enabled": false, "domain": "CORP"}
+  ],
+  "groups": [
+    {"groupname": "Domain Admins", "rid": 512, "domain": "CORP"}
+  ],
+  "passpol": {
+    "min_password_length": 8,
+    "lockout_threshold": 5,
+    "lockout_duration": 30
+  },
+  "sessions": [
+    {"user": "Administrator", "computer": "10.10.0.5"}
+  ]
+}

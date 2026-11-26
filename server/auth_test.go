@@ -69,7 +69,7 @@ func TestLoadOrCreateJWTKeyMigrates(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			key, err := loadOrCreateJWTKey(keyDir, dataDir)
+			key, err := loadOrCreateJWTKey(keyDir, dataDir, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -100,7 +100,7 @@ func TestLoadOrCreateJWTKeyMigratesDataDirFirst(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(baseDir, jwtKeyFilename), []byte(baseKey), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	key, err := loadOrCreateJWTKey(keyDir, dataDir)
+	key, err := loadOrCreateJWTKey(keyDir, dataDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestLoadOrCreateJWTKeyMigratesDataDirFirst(t *testing.T) {
 
 func TestLoadOrCreateJWTKeyGenerates(t *testing.T) {
 	keyDir, dataDir, _ := jwtKeyDirs(t)
-	key, err := loadOrCreateJWTKey(keyDir, dataDir)
+	key, err := loadOrCreateJWTKey(keyDir, dataDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestLoadOrCreateJWTKeyGenerates(t *testing.T) {
 	assertKeyFileMode(t, path)
 	assertMissing(t, filepath.Join(dataDir, jwtKeyFilename))
 
-	again, err := loadOrCreateJWTKey(keyDir, dataDir)
+	again, err := loadOrCreateJWTKey(keyDir, dataDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestLoadOrCreateJWTKeyNeverOverwrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	key, err := loadOrCreateJWTKey(keyDir, dataDir)
+	key, err := loadOrCreateJWTKey(keyDir, dataDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestLoadOrCreateJWTKeyNeverOverwrites(t *testing.T) {
 	if err := os.WriteFile(path, []byte(short), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadOrCreateJWTKey(keyDir, dataDir); err == nil {
+	if _, err := loadOrCreateJWTKey(keyDir, dataDir, false); err == nil {
 		t.Fatal("want an error for a short key")
 	}
 	data, err := os.ReadFile(path)

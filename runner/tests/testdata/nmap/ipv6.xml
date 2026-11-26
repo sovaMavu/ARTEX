@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -Pn -n -sT -p 443 -oX - 2001:db8::10" start="1762670400" version="7.95">
+  <host starttime="1762670400" endtime="1762670405">
+    <status state="up" reason="syn-ack"/>
+    <address addr="2001:db8::10" addrtype="ipv6"/>
+    <hostnames>
+      <hostname name="ipv6.example.com" type="PTR"/>
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="nginx" version="1.24.0" tunnel="ssl" method="probed" conf="10"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>

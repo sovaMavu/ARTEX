@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -n -sn -oX - 10.10.0.0/24" start="1762670400" version="7.95">
+</nmaprun>

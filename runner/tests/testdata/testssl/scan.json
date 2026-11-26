@@ -1,0 +1,41 @@
+{
+  "Invocation": "testssl.sh --quiet --color 0 --jsonfile out.json --protocols --server-defaults --certificate example.com:443",
+  "scanResult": [
+    {
+      "id": "cert",
+      "ip": "203.0.113.10",
+      "port": "443",
+      "severity": "INFO",
+      "finding": "Certificate: CN=example.com",
+      "certificate": {
+        "subject": "CN=example.com",
+        "issuer": "CN=Test CA,O=Test Org",
+        "serial": "01AB23CD",
+        "notBefore": "2026-01-01T00:00:00Z",
+        "notAfter": "2026-12-31T23:59:59Z",
+        "SAN": "example.com, www.example.com"
+      }
+    },
+    {
+      "id": "TLS1",
+      "ip": "203.0.113.10",
+      "port": "443",
+      "severity": "LOW",
+      "finding": "TLS 1.0 is offered"
+    },
+    {
+      "id": "cipher_rc4",
+      "ip": "203.0.113.10",
+      "port": "443",
+      "severity": "HIGH",
+      "finding": "RC4 is offered"
+    },
+    {
+      "id": "cert_expiry",
+      "ip": "203.0.113.10",
+      "port": "443",
+      "severity": "OK",
+      "finding": "Certificate expires in 352 days"
+    }
+  ]
+}

@@ -679,6 +679,11 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		opts.Hooks = hooks
 	}
 	opts.Hooks = SpillHooks(opts.Hooks, opts.ToolOutputDir)
+	if as != nil && taskID > 0 {
+		// Ingest kali-runner observations before the guard's PostToolUse runs.
+		// The wrapper delegates PreToolUse/Stop unchanged and is best-effort.
+		opts.Hooks = WithObservationIngestion(opts.Hooks, as, w.workDir, taskID)
+	}
 	// The session id is the provider-side identity (session header, usage metering)
 	// with or without persistence; Norma only puts it on ctx when it writes a transcript.
 	opts.SessionID = WorkerSessionID(ts.ID(), intent.ID)
